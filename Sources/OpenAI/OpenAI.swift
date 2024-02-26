@@ -199,7 +199,7 @@ extension OpenAI {
         components.scheme = "https"
         components.host = configuration.host
         components.path = path
-        return components.url!
+        return "\(components.scheme)://\(components.host)\(components.path)"
     }
 }
 
