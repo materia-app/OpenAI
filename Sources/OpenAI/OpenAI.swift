@@ -10,7 +10,13 @@ import Foundation
 import FoundationNetworking
 #endif
 
+public protocol OpenAIRequestDelegate: AnyObject {
+    func shouldModifyRequest(_ request: URLRequest) -> URLRequest
+}
+
 final public class OpenAI: OpenAIProtocol {
+    
+    public weak var delegate: OpenAIRequestDelegate?
 
     public struct Configuration {
         
@@ -122,7 +128,7 @@ extension OpenAI {
 
     func performRequest<ResultType: Codable>(request: any URLRequestBuildable, completion: @escaping (Result<ResultType, Error>) -> Void) {
         do {
-            let request = try request.build(token: configuration.token, 
+            let request = try request.build(token: configuration.token,
                                             organizationIdentifier: configuration.organizationIdentifier,
                                             timeoutInterval: configuration.timeoutInterval)
             let task = session.dataTask(with: request) { data, _, error in
@@ -160,9 +166,15 @@ extension OpenAI {
     
     func performSteamingRequest<ResultType: Codable>(request: any URLRequestBuildable, onResult: @escaping (Result<ResultType, Error>) -> Void, completion: ((Error?) -> Void)?) {
         do {
-            let request = try request.build(token: configuration.token, 
+            var request = try request.build(token: configuration.token,
                                             organizationIdentifier: configuration.organizationIdentifier,
                                             timeoutInterval: configuration.timeoutInterval)
+            if let delegate,
+               let httpBody = request.httpBody,
+               let requestString = String(data: httpBody, encoding: .utf8) {
+                request.httpBody = Data(requestString.utf8)
+                request = delegate.shouldModifyRequest(request)
+            }
             let session = StreamingSession<ResultType>(urlRequest: request)
             session.onReceiveContent = {_, object in
                 onResult(.success(object))
@@ -183,10 +195,9 @@ extension OpenAI {
     
     func performSpeechRequest(request: any URLRequestBuildable, completion: @escaping (Result<AudioSpeechResult, Error>) -> Void) {
         do {
-            let request = try request.build(token: configuration.token, 
+            let request = try request.build(token: configuration.token,
                                             organizationIdentifier: configuration.organizationIdentifier,
                                             timeoutInterval: configuration.timeoutInterval)
-            
             let task = session.dataTask(with: request) { data, _, error in
                 if let error = error {
                     completion(.failure(error))
@@ -223,7 +234,8 @@ extension OpenAI {
         components.scheme = "https"
         components.host = configuration.host
         components.path = path
-        return components.url!
+        return URL(string: "http://\(components.host!)\(path)")!
+//        return components.url!
     }
 }
 
